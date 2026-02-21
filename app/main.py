@@ -1,106 +1,58 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Response
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 import csv
 import io
 import os
 
-# -------------------------------------------------
-# Create FastAPI app
-# -------------------------------------------------
 app = FastAPI()
 
-# -------------------------------------------------
-# CORS Configuration (Grader Safe)
-# -------------------------------------------------
+# Proper CORS config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,   # MUST be False when using "*"
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# FORCE header on every response (including errors)
 @app.middleware("http")
-async def add_cors_headers(request, call_next):
+async def force_cors_header(request, call_next):
     response = await call_next(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
     return response
 
-# -------------------------------------------------
-# Explicit OPTIONS handler for root (grader check)
-# -------------------------------------------------
-@app.options("/")
-async def root_options():
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
-        },
-    )
-
-# -------------------------------------------------
-# Explicit OPTIONS handler for upload
-# -------------------------------------------------
-@app.options("/upload")
-async def upload_options():
-    return Response(
-        status_code=200,
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        },
-    )
-
-# -------------------------------------------------
-# Constants
-# -------------------------------------------------
-MAX_FILE_SIZE = 50 * 1024  # 50 KB
+MAX_FILE_SIZE = 50 * 1024
 ALLOWED_EXTENSIONS = {".csv", ".json", ".txt"}
 UPLOAD_TOKEN = "jps5cpm0v38wkqe0"
 EXPECTED_EMAIL = "24f2001045@ds.study.iitm.ac.in"
 
-# -------------------------------------------------
-# Health Check (Render requirement)
-# -------------------------------------------------
 @app.get("/")
 def health_check():
     return {"status": "ok"}
 
-# -------------------------------------------------
-# Secure Upload Endpoint
-# -------------------------------------------------
 @app.post("/upload")
 async def secure_upload(
     file: UploadFile = File(...),
     x_upload_token_5067: str = Header(None, alias="X-Upload-Token-5067")
 ):
-    # 1️⃣ Authentication
     if x_upload_token_5067 != UPLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    # 2️⃣ File Extension Validation
     filename = file.filename
     _, ext = os.path.splitext(filename)
 
     if ext.lower() not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Invalid file type")
 
-    # 3️⃣ File Size Validation
     content = await file.read()
 
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="File too large")
 
-    # Only CSV supported for analysis
     if ext.lower() != ".csv":
         raise HTTPException(status_code=400, detail="Only CSV supported for analysis")
 
-    # 4️⃣ CSV Processing
     try:
         decoded = content.decode("utf-8")
         csv_reader = csv.DictReader(io.StringIO(decoded))
